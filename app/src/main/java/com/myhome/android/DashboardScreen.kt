@@ -79,10 +79,18 @@ fun DashboardScreen(
             Text(if (checking) "연결 확인 중…" else "서버 연결 확인")
         }
 
-        // 응답이 도착한 뒤 결과 문구를 보여준다.
+        // 서버 연결 결과를 한 번만 표시한다.
         if (connectionMessage.isNotEmpty()) {
             Text(text = connectionMessage)
         }
+
+        // 장보기 버튼을 누르면 MainActivity가 장보기 화면을 연다.
+        Button(onClick = onOpenShopping) {
+            Text("장보기")
+        }
+
+        // 장보기 버튼 아래에 이메일과 비밀번호 입력란을 표시한다.
+        LoginForm()
     }
 }
 

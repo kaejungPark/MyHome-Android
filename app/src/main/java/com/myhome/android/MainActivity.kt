@@ -41,9 +41,8 @@ class MainActivity : ComponentActivity() {
 
                     // showShopping 값이 바뀌면 Compose가 해당하는 화면을 표시한다.
                     if (showShopping) {
-                        ShoppingScreen(
-                            // API 연결 전에는 빈 목록을 전달한다. 연결 후에는 서버에서 조회한 목록을 넣는다.
-                            shoppingItems = emptyList(),
+                        // 장보기 화면을 열 때 서버에서 현재 로그인한 계정의 목록을 조회한다.
+                        ShoppingRoute(
                             onBack = { showShopping = false },
                             modifier = screenModifier
                         )

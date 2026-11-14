@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 개발용 앱에서 PC의 Spring Boot 서버에 HTTP로 접속할 수 있게 한다. -->
+    <!-- 개발용 앱이 로컬 네트워크에 있는 PC의 백엔드에 접속할 때 필요한 권한이다. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
+    <!-- 개발 PC의 Spring Boot 서버에 HTTP로 접속할 수 있게 한다. -->
     <application android:usesCleartextTraffic="true" />
 
 </manifest>
