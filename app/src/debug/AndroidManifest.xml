@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 개발용 앱에서 PC의 Spring Boot 서버에 HTTP로 접속할 수 있게 한다. -->
+    <application android:usesCleartextTraffic="true" />
+
+</manifest>
