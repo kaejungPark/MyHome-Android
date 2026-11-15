@@ -2,6 +2,12 @@ package com.myhome.android
 
 import org.json.JSONObject
 
+// 한 번 조회한 물품 목록과 해당 탭의 전체 페이지 수를 함께 담는다.
+data class ShoppingPage(
+    val items: List<ShoppingItem>,
+    val totalPages: Int
+)
+
 // 장보기 화면에서 사용하는 조회·등록·수정·구매 상태 변경 요청을 담당한다.
 object ShoppingApi {
 
@@ -81,6 +87,19 @@ object ShoppingApi {
             path = if (id == null) PATH else "$PATH/$id",
             body = body.toString(),
             contentType = "application/json; charset=UTF-8",
+            csrf = AuthApi.fetchCsrfToken()
+        )
+    }
+
+    /**
+     * 로그인한 사용자의 장보기 항목 한 건을 삭제한다.
+     * 이름이 같은 물품이 있을 수 있으므로 목록에서 선택한 항목의 ID를 사용한다.
+     */
+    suspend fun deleteShoppingItem(id: Long) {
+        // 삭제 대상은 URL로 전달하고, 데이터 변경에 필요한 CSRF 토큰을 함께 보낸다.
+        ApiClient.request(
+            method = "DELETE",
+            path = "$PATH/$id",
             csrf = AuthApi.fetchCsrfToken()
         )
     }

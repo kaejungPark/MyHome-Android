@@ -1,6 +1,7 @@
 package com.myhome.android
 
 import android.R
+import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -45,6 +46,8 @@ fun ShoppingForm(
 
     // 저장 중에는 버튼을 잠그고, 실패하면 작성한 내용 아래에 오류를 표시한다.
     var saving by remember { mutableStateOf(false) }
+    // 삭제 버튼을 누르면 true가 되어 확인창이 열린다.
+    var showDeleteDialog by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -52,6 +55,52 @@ fun ShoppingForm(
     // 입력 화면에서 휴대폰의 뒤로 가기를 누르면 장보기 목록으로 돌아간다.
     BackHandler {
         if (!saving) onBack()
+    }
+
+    if (showDeleteDialog && id != null) {
+        // 입력란에서 이름을 바꿨어도 삭제 대상은 서버에 저장된 원래 물품이다.
+        var originalName = initial.getString("name").orEmpty()
+
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("물품 삭제") },
+            text = { Text("‘${originalName}’ 항목을 장보기 목록에서 삭제할까요?") },
+
+            // 취소하면 확인창만 닫고 작성하던 내용을 유지한다.
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("취소")
+                }
+            },
+
+            confirmButton = {
+                TextButton(enabled = !saving, onClick = {
+                    if (!saving) {
+                        // 요청 전에 확인창을 닫고 저장·삭제 버튼의 중복 클릭을 막는다.
+                        saving = true
+                        showDeleteDialog = false
+                        error = ""
+
+                        scope.launch {
+                            try {
+                                ShoppingApi.deleteShoppingItem(id)
+                                // 기존 콜백이 현재 탭으로 돌아가 목록을 다시 조회한다.
+                                onSave()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                // 삭제 실패 시 수정 화면에 남아 결과를 안내한다.
+                                error = e.localizedMessage ?: "물품을 삭제하지 못했습니다."
+                            } finally {
+                                saving = false
+                            }
+                        }
+                    }
+                }) {
+                    Text("삭제", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        )
     }
 
     Column(
@@ -191,6 +240,16 @@ fun ShoppingForm(
 
             TextButton(enabled = !saving, onClick = onBack) {
                 Text("취소")
+            }
+
+            // 기존 물품의 수정 화면에서만 삭제 버튼을 표시한다.
+            if (id != null) {
+                TextButton(
+                    enabled = !saving,
+                    onClick = { showDeleteDialog = true }
+                ) {
+                    Text("삭제", color = MaterialTheme.colorScheme.error)
+                }
             }
         }
     }
