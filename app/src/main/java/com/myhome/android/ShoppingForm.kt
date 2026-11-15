@@ -1,7 +1,5 @@
 package com.myhome.android
 
-import android.R
-import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -20,12 +18,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.TimeZone
 
 /**
  * 물품 추가와 수정에서 함께 사용하는 화면이다.
  * initial은 목록에서 전달한 초기값 묶음이다. 추가일 때는 비어 있고, 수정일 때는 ID와 기존 값이 들어 있다.
  * onSaved는 저장 성공 후 목록으로 돌아가 최신 데이터를 조회하는 함수다.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShoppingForm(
     initial: Bundle,
@@ -41,7 +42,28 @@ fun ShoppingForm(
     var name by rememberSaveable { mutableStateOf(initial.getString("name").orEmpty()) }
     var quantity by rememberSaveable { mutableStateOf(initial.getString("quantity") ?: "1") }
     var unit by rememberSaveable { mutableStateOf(initial.getString("unit").orEmpty()) }
-    var dueDate by rememberSaveable { mutableStateOf(initial.getString("dueDate").orEmpty()) }
+
+    // 서버의 날짜 문자열과 달력이 사용하는 UTC 기준 날짜를 서로 변환한다.
+    val dateFormat = remember {
+        SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+    }
+
+    // 수정이면 기존 예정일을 선택하고, 추가이거나 예정일이 없으면 선택을 비워 둔다.
+    val initialDate = initial.getString("dueDate")
+    val initialMillis = remember(initialDate) {
+        initialDate?.takeIf { it.isNotBlank() }?.let { dateFormat.parse(it)?.time }
+    }
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = initialMillis
+    )
+
+    // 저장 코드에서 사용하던 dueDate를 달력의 현재 선택값으로 만든다.
+    val dueDate = datePickerState.selectedDateMillis?.let { millis ->
+        dateFormat.format(java.util.Date(millis))
+    }.orEmpty()
+
     var memo by rememberSaveable { mutableStateOf(initial.getString("memo").orEmpty()) }
 
     // 저장 중에는 버튼을 잠그고, 실패하면 작성한 내용 아래에 오류를 표시한다.
@@ -141,39 +163,41 @@ fun ShoppingForm(
             )
         }
 
-        // 날짜는 선택 사항이다. 기존 예정일이 있으면 그 날짜에서 달력이 열린다.
-        Row {
-            TextButton(
-                enabled = !saving,
-                onClick = {
-                    val calendar = Calendar.getInstance()
-                    if (dueDate.isNotEmpty()) {
-                        val (year, month, day) = dueDate.split("-").map { it.toInt() }
-                        calendar.set(year, month - 1, day)
-                    }
+        // 선택 여부를 달력 위에 표시한다. 날짜는 필수가 아니므로 다시 지울 수 있다.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (dueDate.isEmpty()) "구매 예정일 (선택)" else "구매 예정일 · $dueDate",
+                style = MaterialTheme.typography.titleSmall
+            )
 
-                    DatePickerDialog(
-                        context,
-                        { _, year, month, day ->
-                            // Android 달력의 월은 0부터 시작한다. 서버에는 yyyy-MM-dd로 전달한다.
-                            dueDate = String.format(
-                                Locale.ROOT, "%04d-%02d-%02d", year, month + 1, day
-                            )
-                        },
-                        calendar.get(Calendar.YEAR),
-                        calendar.get(Calendar.MONTH),
-                        calendar.get(Calendar.DAY_OF_MONTH)
-                    ).show()
-                }
-            ) {
-                Text(dueDate.ifEmpty { "구매 예정일 선택" })
-            }
             if (dueDate.isNotEmpty()) {
-                TextButton(enabled = !saving, onClick = { dueDate = "" }) {
+                TextButton(
+                    enabled = !saving,
+                    onClick = { datePickerState.selectedDateMillis = null }
+                ) {
                     Text("날짜 지우기")
                 }
             }
         }
+
+        // 화면을 열자마자 월간 달력을 표시한다.
+        // 제목과 큰 날짜 헤더를 생략해 달력이 차지하는 세로 공간을 줄인다.
+        DatePicker(
+            state = datePickerState,
+            modifier = Modifier.fillMaxWidth(),
+            title = null,
+            headline = null,
+            showModeToggle = false,
+            colors = DatePickerDefaults.colors(
+                // 오늘 날짜의 테두리를 숨기고 숫자 색도 일반 날짜와 같게 표시한다.
+                todayDateBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                todayContentColor = MaterialTheme.colorScheme.onSurface
+            )
+        )
         OutlinedTextField(
             value = memo,
             onValueChange = { memo = it },

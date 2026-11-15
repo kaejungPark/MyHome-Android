@@ -8,30 +8,64 @@ data class ShoppingPage(
     val totalPages: Int
 )
 
-// 장보기 화면에서 사용하는 조회·등록·수정·구매 상태 변경 요청을 담당한다.
+/**
+ * 장보기 목록 조회·검색, 물품 등록·수정·삭제, 구매 완료·취소를 담당한다.
+ * 각 함수는 요청 경로와 데이터를 정하고, 세션 쿠키 전송과 공통 응답 처리는 ApiClient에 맡긴다.
+ */
 object ShoppingApi {
 
     private const val PATH = "/api/shopping-items"
 
     /**
-     * 선택한 탭의 첫 페이지를 조회한다.
-     * isCompleted가 false면 살 물품, true면 구매 완료 항목을 가져온다.
+     * 현재 탭과 검색 조건에 맞는 장보기 목록을 한 페이지에 최대 5개씩 조회한다.
+     *
+     * @param isCompleted false면 살 물품, true면 구매 완료 항목을 조회한다.
+     * @param page 조회할 페이지 번호. 첫 페이지는 1이다.
+     * @param name 물품명 검색어. 비워 두면 이름 조건을 적용하지 않는다.
+     * @param purchaseDueDate 구매 예정일(yyyy-MM-dd). 비워 두면 날짜 조건을 적용하지 않는다.
+     * @return 현재 페이지의 물품 목록과 같은 조건으로 조회한 전체 페이지 수.
      */
-    suspend fun fetchShoppingItems(isCompleted: Boolean): List<ShoppingItem> {
+    suspend fun fetchShoppingItems(
+        isCompleted: Boolean,
+        page: Int,
+        name: String = "",
+        purchaseDueDate: String = ""
+    ): ShoppingPage {
+        // 한글, 공백, &가 들어간 물품명도 검색할 수 있도록 URL을 조립한다.
+        val path = android.net.Uri.parse(PATH).buildUpon()
+            .appendQueryParameter("page", page.toString())
+            .appendQueryParameter("size", "5")
+            .appendQueryParameter("isCompleted", isCompleted.toString())
+            .apply {
+                if (name.isNotBlank()) {
+                    appendQueryParameter("name", name.trim())
+                }
+                if (purchaseDueDate.isNotBlank()) {
+                    appendQueryParameter("purchaseDueDate", purchaseDueDate)
+                }
+            }
+            .build()
+            .toString()
+
         val response = ApiClient.request(
             method = "GET",
-            path = "$PATH?page=1&size=10&isCompleted=$isCompleted",
+            path = path,
             unauthorizedMessage = "장보기 목록을 보려면 다시 로그인해 주세요."
         )
 
-        // 백엔드 페이지 응답에서 실제 물품 배열은 data.items에 들어 있다.
-        val items = response.getJSONObject("data").getJSONArray("items")
-        return List(items.length()) { index ->
-            val item = items.getJSONObject(index)
+        // 서버는 검색 조건에 맞는 현재 페이지의 항목과 전체 페이지 수를 함께 내려준다.
+        val data = response.getJSONObject("data")
+        val rows = data.getJSONArray("items")
+
+        // 서버가 반환한 JSON 배열의 각 행을 화면에서 사용하는 ShoppingItem으로 변환한다.
+        // 조회 결과가 0건이면 빈 목록이 되어 화면에서 빈 목록 안내를 표시한다.
+        val items = List(rows.length()) { index ->
+            val item = rows.getJSONObject(index)
 
             ShoppingItem(
                 id = item.getLong("id"),
                 name = item.getString("name"),
+                // 수량에는 1.5kg 같은 소수가 들어올 수 있어 BigDecimal로 읽는다.
                 quantity = item.get("quantity").toString().toBigDecimal(),
                 unit = item.getString("unit"),
                 isCompleted = item.getBoolean("isCompleted"),
@@ -40,6 +74,11 @@ object ShoppingApi {
                 memo = item.optionalText("memo")
             )
         }
+
+        return ShoppingPage(
+            items = items,
+            totalPages = data.getInt("totalPages")
+        )
     }
 
     // 구매일·예정일·메모의 JSON null을 Kotlin의 null로 읽는다.
