@@ -18,10 +18,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
 
-// 앱의 첫 화면에 대시보드 제목과 안내 문구를 표시한다.
+// 로그인 상태에 따라 로그인 폼 또는 장보기 버튼을 표시한다.
 @Composable
 fun DashboardScreen(
+    isLoggedIn: Boolean,
+    onLoginSuccess: () -> Unit,
     onOpenShopping: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -84,13 +87,40 @@ fun DashboardScreen(
             Text(text = connectionMessage)
         }
 
-        // 장보기 버튼을 누르면 MainActivity가 장보기 화면을 연다.
-        Button(onClick = onOpenShopping) {
-            Text("장보기")
-        }
+        if (isLoggedIn) {
+            // null은 아직 조회 전, 0은 조회에 성공했고 살 물품이 없다는 뜻이다.
+            var shoppingCount by remember { mutableStateOf<Long?>(null) }
+            var countFailed by remember { mutableStateOf(false) }
 
-        // 장보기 버튼 아래에 이메일과 비밀번호 입력란을 표시한다.
-        LoginForm()
+            // 로그인 후 대시보드가 열리거나 장보기에서 돌아올 때 한 번 조회한다.
+            LaunchedEffect(Unit) {
+                try {
+                    val result = ShoppingApi.fetchShoppingItems(
+                        isCompleted = false, // 살 물품만 조회한다.
+                        page = 1
+                    )
+                    shoppingCount = result.totalCount
+                } catch (e: CancellationException) {
+                    // 조회 중 장보기 화면으로 이동하면 대시보드의 요청을 취소한다.
+                    throw e
+                } catch (e: Exception) {
+                    countFailed = true
+                }
+            }
+
+            // 건수 조회에 실패해도 버튼을 눌러 장보기 목록을 열 수 있다.
+            Button(onClick = onOpenShopping) {
+                val label = when {
+                    countFailed -> "장보기 · 건수 확인 실패"
+                    shoppingCount == null -> "살 물품 확인 중…"
+                    else -> "살 물품 ${shoppingCount}개  ›"
+                }
+                Text(label)
+            }
+        } else {
+            // 로그인 폼이 성공을 알리면 MainActivity까지 전달한다.
+            LoginForm(onLoginSuccess = onLoginSuccess)
+        }
     }
 }
 
@@ -100,6 +130,11 @@ fun DashboardScreen(
 fun DashboardPreview() {
     // 실제 앱과 같은 테마로 표시한다.
     MyHomeTheme {
-        DashboardScreen(onOpenShopping = {})
+        // 로그인 전 대시보드를 미리 본다. true로 바꾸면 장보기 버튼을 볼 수 있다.
+        DashboardScreen(
+            isLoggedIn = false,
+            onLoginSuccess = {},
+            onOpenShopping = {}
+        )
     }
 }

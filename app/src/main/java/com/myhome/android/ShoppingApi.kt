@@ -2,10 +2,11 @@ package com.myhome.android
 
 import org.json.JSONObject
 
-// 한 번 조회한 물품 목록과 해당 탭의 전체 페이지 수를 함께 담는다.
+// items는 현재 페이지의 물품이고, totalCount는 같은 조건에 맞는 전체 물품 수다.
 data class ShoppingPage(
     val items: List<ShoppingItem>,
-    val totalPages: Int
+    val totalPages: Int,
+    val totalCount: Long
 )
 
 /**
@@ -77,7 +78,9 @@ object ShoppingApi {
 
         return ShoppingPage(
             items = items,
-            totalPages = data.getInt("totalPages")
+            totalPages = data.getInt("totalPages"),
+            // 대시보드에서 첫 페이지의 5개를 넘어서는 물품까지 정확하게 셀 수 있다.
+            totalCount = data.getLong("totalCount")
         )
     }
 

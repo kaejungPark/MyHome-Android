@@ -23,6 +23,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Locale
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
 /**
  * 장보기 화면의 현재 탭, 페이지, 검색 조건을 관리하고 서버에서 목록을 조회한다.
@@ -230,13 +236,26 @@ fun ShoppingScreen(
         modifier = modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // 검색창은 버튼을 눌렀을 때만 열어 목록의 세로 공간을 확보한다.
+        // 한 줄에 뒤로가기, 화면 제목, 검색을 배치해 목록이 더 위에서 시작하게 한다.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("장보기", style = MaterialTheme.typography.headlineMedium)
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.semantics {
+                    contentDescription = "대시보드로 돌아가기"
+                }
+            ) {
+                Text("←", style = MaterialTheme.typography.headlineSmall)
+            }
+
+            // 제목이 남은 공간을 차지하면 검색 버튼이 오른쪽 끝에 놓인다.
+            Text(
+                text = "장보기",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.headlineSmall
+            )
 
             ShoppingSearchButton(
                 appliedName = searchName,
@@ -246,34 +265,38 @@ fun ShoppingScreen(
             )
         }
 
-        TextButton(onClick = onBack) {
-            Text("대시보드로 돌아가기")
-        }
-
-        // 구매 상태는 탭으로 선택하고, 같은 검색 조건을 두 탭에 적용한다.
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
+        // 두 탭이 화면 너비를 반씩 사용한다. 선택된 쪽만 배경색을 강조한다.
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            SegmentedButton(
                 selected = !showCompleted,
                 onClick = { onTabSelected(false) },
                 enabled = savingId == null,
-                label = { Text("살 물품") }
-            )
-            FilterChip(
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                icon = {}
+            ) {
+                Text("살 물품")
+            }
+
+            SegmentedButton(
                 selected = showCompleted,
                 onClick = { onTabSelected(true) },
                 enabled = savingId == null,
-                label = { Text("구매 완료") }
-            )
-        }
-
-        if (!showCompleted) {
-            Button(onClick = onAdd, enabled = savingId == null) {
-                Text("+ 물품 추가")
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                icon = {}
+            ) {
+                Text("구매 완료")
             }
         }
 
-        if (saveError != null) {
-            Text(saveError, color = MaterialTheme.colorScheme.error)
+        // 새 물품은 미구매로 등록한다. 살 물품 탭에서만 목록 위 오른쪽에 버튼을 둔다.
+        if (!showCompleted) {
+            Button(
+                onClick = onAdd,
+                enabled = savingId == null,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("+ 물품 추가")
+            }
         }
 
         when {
@@ -309,24 +332,37 @@ fun ShoppingScreen(
                     }
                 }
 
-                // 페이지당 5개이며 결과가 한 페이지뿐이면 이동 버튼을 숨긴다.
+                // 목록만 스크롤하고 페이지 이동은 하단 중앙의 같은 자리에 표시한다.
                 if (totalPages > 1) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(
+                        IconButton(
                             enabled = page > 1 && savingId == null,
-                            onClick = { onPageChange(page - 1) }
-                        ) { Text("이전") }
+                            onClick = { onPageChange(page - 1) },
+                            modifier = Modifier.semantics {
+                                contentDescription = "이전 페이지"
+                            }
+                        ) {
+                            Text("‹", style = MaterialTheme.typography.headlineSmall)
+                        }
 
-                        Text("$page / $totalPages")
+                        Text(
+                            text = "$page / $totalPages",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
 
-                        TextButton(
+                        IconButton(
                             enabled = page < totalPages && savingId == null,
-                            onClick = { onPageChange(page + 1) }
-                        ) { Text("다음") }
+                            onClick = { onPageChange(page + 1) },
+                            modifier = Modifier.semantics {
+                                contentDescription = "다음 페이지"
+                            }
+                        ) {
+                            Text("›", style = MaterialTheme.typography.headlineSmall)
+                        }
                     }
                 }
             }
@@ -373,35 +409,27 @@ private fun ShoppingItemRow(
                 .padding(vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            // 첫 줄에는 이름·수량·상태를 배치하고, 긴 이름만 말줄임 처리한다.
+            // 물품명은 왼쪽, 수량은 오른쪽 끝에 표시한다.
+            // 구매 상태는 위쪽의 선택된 탭과 행 왼쪽의 체크박스로 확인한다.
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 긴 물품명은 한 줄로 줄여도 오른쪽 수량은 항상 보이게 한다.
                 Text(
                     text = item.name,
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text("$quantity${item.unit}", style = MaterialTheme.typography.bodySmall)
 
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (item.isCompleted) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    }
-                ) {
-                    Text(
-                        text = if (item.isCompleted) "구매 완료" else "미구매",
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
+                // 앞에서 정리한 수량과 단위를 붙여 '2팩', '1.5kg'처럼 표시한다.
+                Text(
+                    text = "$quantity${item.unit}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
 
             // 날짜와 메모가 없으면 줄을 생략해 짧은 목록은 한눈에 보이게 한다.
@@ -456,16 +484,41 @@ private fun ShoppingSearchButton(
     var date by rememberSaveable { mutableStateOf("") }
     val hasFilter = appliedName.isNotEmpty() || appliedDate.isNotEmpty()
 
-    TextButton(
+    // 적용된 조건이 있으면 돋보기 옆에 점을 표시해 필터가 켜져 있음을 알려준다.
+    val searchLabel = if (hasFilter) "검색 조건 적용 중, 검색 열기" else "장보기 검색"
+    val iconColor = LocalContentColor.current
+
+    IconButton(
         enabled = enabled,
+        modifier = Modifier.semantics { contentDescription = searchLabel },
         onClick = {
-            // 창을 열 때 현재 적용된 값으로 시작한다. 취소한 입력은 다음에 남지 않는다.
+            // 기존 조건을 입력란에 채운 뒤 검색창을 연다.
             name = appliedName
             date = appliedDate
             open = true
         }
     ) {
-        Text(if (hasFilter) "검색 · 적용 중" else "검색")
+        BadgedBox(
+            badge = { if (hasFilter) Badge() }
+        ) {
+            // 원과 짧은 대각선으로 돋보기를 그린다.
+            Canvas(modifier = Modifier.size(24.dp)) {
+                val stroke = 2.dp.toPx()
+                drawCircle(
+                    color = iconColor,
+                    radius = 6.5.dp.toPx(),
+                    center = Offset(10.dp.toPx(), 10.dp.toPx()),
+                    style = Stroke(width = stroke)
+                )
+                drawLine(
+                    color = iconColor,
+                    start = Offset(15.dp.toPx(), 15.dp.toPx()),
+                    end = Offset(21.dp.toPx(), 21.dp.toPx()),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
     }
 
     if (open) {

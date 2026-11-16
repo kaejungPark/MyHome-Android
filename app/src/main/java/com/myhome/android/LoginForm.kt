@@ -17,9 +17,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.IOException
 
-// 이메일과 비밀번호를 입력받아 로그인하고, 결과를 버튼 아래에 표시하는 화면이다.
+// 이메일과 비밀번호로 로그인하고, 일반 로그인에 성공하면 상위 화면에 알린다.
 @Composable
-fun LoginForm() {
+fun LoginForm(onLoginSuccess: () -> Unit) {
     // 버튼을 눌렀을 때 로그인 요청을 시작한다. 화면을 벗어나면 요청 작업도 취소된다.
     val scope = rememberCoroutineScope()
 
@@ -65,15 +65,16 @@ fun LoginForm() {
                 // suspend 함수인 AuthApi.login()을 호출하기 위해 코루틴을 시작한다.
                 scope.launch {
                     try {
-                        // 로그인에 성공하면 비밀번호 변경이 필요한지 Boolean 값으로 돌려받는다.
+                        // 로그인 응답의 true는 임시 비밀번호 변경이 필요하다는 뜻이다.
                         val needsPasswordChange = AuthApi.login(email, password)
                         password = ""
 
-                        // 임시 비밀번호로 로그인한 경우에는 변경 안내를 보여준다.
-                        message = if (needsPasswordChange) {
-                            "임시 비밀번호로 로그인했습니다. 새 비밀번호로 변경해 주세요."
+                        if (needsPasswordChange) {
+                            // 임시 비밀번호로 로그인하면 안내를 유지한다.
+                            message = "임시 비밀번호로 로그인했습니다. 새 비밀번호로 변경해 주세요."
                         } else {
-                            "로그인되었습니다."
+                            // 일반 로그인 성공을 알려 대시보드에 장보기 버튼을 표시한다.
+                            onLoginSuccess()
                         }
                     } catch (e: CancellationException) {
                         // 화면 이동으로 작업이 취소되면 코루틴이 종료되도록 예외를 다시 전달한다.
