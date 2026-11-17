@@ -42,14 +42,14 @@ class MainActivity : ComponentActivity() {
                 // rememberSaveable을 사용해 화면을 회전한 뒤에도 현재 화면을 유지한다.
                 var showShopping by rememberSaveable { mutableStateOf(false) }
 
+                // 장보기 화면을 처음 열 때 선택할 탭을 기억한다.
+                // false는 살 물품, true는 구매 완료다.
+                var shoppingInitialCompleted by rememberSaveable { mutableStateOf(false) }
+
                 // 장보기 이동 요청이 있고 현재 로그인한 경우에만 장보기 화면을 연다.
                 val shoppingVisible = showShopping && session.isLoggedIn
+                // 장보기 화면에서 휴대폰의 뒤로 가기를 누르면 대시보드로 돌아간다.
                 BackHandler(enabled = shoppingVisible) { showShopping = false }
-                // 장보기 화면에서만 휴대폰의 뒤로 가기를 처리한다.
-                // 대시보드에서는 안드로이드의 기본 뒤로 가기가 동작한다.
-                BackHandler(enabled =  showShopping) {
-                    showShopping = false
-                }
 
                 // Scaffold는 화면 전체를 사용하고, 콘텐츠에 필요한 여백을 innerPadding으로 전달한다.
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -59,10 +59,11 @@ class MainActivity : ComponentActivity() {
 
                     // showShopping 값이 바뀌면 Compose가 해당하는 화면을 표시한다.
                     if (shoppingVisible) {
-                        // 장보기 화면을 열 때 서버에서 현재 로그인한 계정의 목록을 조회한다.
+                        // 대시보드에서 선택한 카드에 맞춰 장보기의 첫 탭을 지정한다.
                         ShoppingRoute(
                             onBack = { showShopping = false },
-                            modifier = screenModifier
+                            modifier = screenModifier,
+                            initialShowCompleted = shoppingInitialCompleted
                         )
                     } else {
                         DashboardScreen(
@@ -72,7 +73,11 @@ class MainActivity : ComponentActivity() {
                                 showShopping = false
                                 session.markLoggedIn()
                             },
-                            onOpenShopping = { showShopping = true },
+                            onOpenShopping = { completed ->
+                                // 선택한 탭을 저장한 뒤 장보기 화면을 연다.
+                                shoppingInitialCompleted = completed
+                                showShopping = true
+                            },
                             modifier = screenModifier
                         )
                     }

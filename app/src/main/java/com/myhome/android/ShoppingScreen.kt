@@ -31,16 +31,19 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 
 /**
- * 장보기 화면의 현재 탭, 페이지, 검색 조건을 관리하고 서버에서 목록을 조회한다.
- * 물품을 선택하면 추가·수정 화면을 열고, 저장이나 삭제가 끝나면 같은 조건으로 다시 조회한다.
+ * 장보기의 탭, 페이지, 검색 조건을 관리하고 서버에서 목록을 조회한다.
+ * initialShowCompleted는 대시보드에서 진입할 때 선택할 첫 탭이다.
+ * 화면을 연 뒤 사용자가 변경한 탭은 rememberSaveable로 보관한다.
  */
 @Composable
 fun ShoppingRoute(
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialShowCompleted: Boolean = false
 ) {
-    // 현재 탭과 페이지, 사용자가 '조회'를 눌러 적용한 조건을 기억한다.
-    var showCompleted by rememberSaveable { mutableStateOf(false) }
+    // 대시보드에서 전달한 탭으로 시작한다.
+    // 화면 회전 후에는 사용자가 마지막으로 선택한 탭을 복원한다.
+    var showCompleted by rememberSaveable { mutableStateOf(initialShowCompleted) }
     var page by rememberSaveable { mutableStateOf(1) }
     var searchName by rememberSaveable { mutableStateOf("") }
     var searchDate by rememberSaveable { mutableStateOf("") }

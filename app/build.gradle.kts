@@ -52,4 +52,6 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    // 집, 사용자, 로그아웃 아이콘을 제공한다.
+    implementation("androidx.compose.material:material-icons-core")
 }
