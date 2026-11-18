@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
+import kotlinx.coroutines.launch
 
 // 대시보드에서 사용할 배경색과 강조색이다.
 private val DashboardBackground = Color(0xFFF3F5FA)
@@ -34,13 +35,26 @@ private val DashboardSecondary = Color(0xFF647087)
  * 장보기 카드에서 false를 전달하면 살 물품 탭,
  * true를 전달하면 구매 완료 탭으로 이동한다.
  */
+/**
+ * 로그인 상태에 맞는 대시보드와 로그인 폼을 표시한다.
+ * 로그아웃에 성공하면 onLogoutSuccess로 MainActivity에 결과를 전달한다.
+ */
 @Composable
 fun DashboardScreen(
     isLoggedIn: Boolean,
     onLoginSuccess: () -> Unit,
+    onLogoutSuccess: () -> Unit,
     onOpenShopping: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 화면에 연결된 코루틴으로 로그아웃 요청을 실행한다.
+    val scope = rememberCoroutineScope()
+
+    // 요청 중에는 로그아웃 중복 클릭을 막는다.
+    var loggingOut by remember { mutableStateOf(false) }
+
+    // 로그아웃 요청 실패 시 화면에 안내할 메시지다.
+    var logoutError by remember { mutableStateOf<String?>(null) }
     // 본문과 하단 메뉴를 세로로 배치한다.
     // MainActivity가 전달한 시스템 영역 여백을 적용한다.
     Column(
@@ -85,11 +99,32 @@ fun DashboardScreen(
                 }
 
                 if (isLoggedIn) {
-                    // 로그아웃 기능은 다음 작업에서 연결한다.
-                    // 현재는 비활성 버튼으로 표시해 동작 준비 중임을 나타낸다.
+                    // 서버 로그아웃에 성공하면 MainActivity에 로그인 상태 해제를 요청한다.
                     TextButton(
-                        onClick = {},
-                        enabled = false
+                        enabled = !loggingOut,
+                        onClick = {
+                            loggingOut = true
+                            logoutError = null
+
+                            scope.launch {
+                                try {
+                                    // 서버 세션을 종료하고 앱의 세션 쿠키를 제거한다.
+                                    AuthApi.logout()
+
+                                    // 성공 후 로그인 전 화면으로 전환한다.
+                                    onLogoutSuccess()
+                                } catch (e: CancellationException) {
+                                    // 화면 종료 등으로 취소된 작업은 취소 상태를 유지한다.
+                                    throw e
+                                } catch (e: Exception) {
+                                    // 통신 실패 시 재시도할 수 있도록 오류를 표시한다.
+                                    logoutError = "로그아웃하지 못했습니다. 다시 시도해 주세요."
+                                } finally {
+                                    // 요청이 끝나면 버튼을 다시 사용할 수 있게 한다.
+                                    loggingOut = false
+                                }
+                            }
+                        }
                     ) {
                         Icon(
                             imageVector = Icons.Default.ExitToApp,
@@ -100,7 +135,7 @@ fun DashboardScreen(
                         Spacer(modifier = Modifier.width(4.dp))
 
                         Text(
-                            text = "로그아웃",
+                            text = if (loggingOut) "처리 중…" else "로그아웃",
                             style = MaterialTheme.typography.labelMedium
                         )
                     }
@@ -125,6 +160,14 @@ fun DashboardScreen(
                         )
                     }
                 }
+            }
+            // 로그아웃에 실패하면 제목 위에 오류 메시지를 표시한다.
+            logoutError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
             // 화면의 대표 제목과 안내 문구를 묶어 배치한다.
             Column(
@@ -468,9 +511,11 @@ private fun DashboardBottomMenu(
 @Composable
 fun DashboardPreview() {
     MyHomeTheme {
+        // 미리보기에서는 실제 로그인·로그아웃 동작을 실행하지 않는다.
         DashboardScreen(
             isLoggedIn = false,
             onLoginSuccess = {},
+            onLogoutSuccess = {},
             onOpenShopping = {}
         )
     }

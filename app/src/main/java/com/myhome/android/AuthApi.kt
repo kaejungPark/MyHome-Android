@@ -46,4 +46,54 @@ object AuthApi {
 
         return response.getJSONObject("data").getBoolean("passwordChangeRequired")
     }
+
+    /**
+     * 현재 로그인 세션을 서버에서 종료한다.
+     * 로그아웃은 서버 상태를 변경하므로 CSRF 토큰을 함께 보낸다.
+     * 서버 처리가 성공하면 앱에 보관한 세션 쿠키도 제거한다.
+     */
+    suspend fun logout() {
+        // 현재 세션에서 사용할 CSRF 토큰을 먼저 받아온다.
+        val csrf = fetchCsrfToken()
+
+        // 서버가 세션 무효화와 인증 정보 제거를 처리한다.
+        ApiClient.request(
+            method = "POST",
+            path = "/api/auth/logout",
+            csrf = csrf
+        )
+
+        // 성공 응답을 확인한 뒤 앱의 세션 쿠키를 비운다.
+        ApiClient.clearSessionCookies()
+    }
+
+    /**
+     * 현재 앱의 세션 쿠키로 서버 로그인 상태를 확인한다.
+     * 일반 로그인 상태면 true, 비로그인 또는 세션 만료면 false를 반환한다.
+     * 네트워크 오류는 호출한 화면으로 전달해 재시도할 수 있게 한다.
+     */
+    suspend fun checkLoginStatus(): Boolean {
+        return try {
+            // ApiClient가 보관 중인 세션 쿠키를 요청에 함께 전달한다.
+            val response = ApiClient.request(
+                method = "GET",
+                path = "/api/auth/me"
+            )
+
+            val data = response.getJSONObject("data")
+
+            // 임시 비밀번호로 로그인한 세션은 일반 서비스 화면에 진입시키지 않는다.
+            if (data.getBoolean("passwordChangeRequired")) {
+                throw java.io.IOException(
+                    "웹에서 비밀번호를 변경한 뒤 다시 로그인해 주세요."
+                )
+            }
+
+            true
+        } catch (e: UnauthorizedException) {
+            // 서버가 비로그인으로 판단한 경우에만 false를 반환한다.
+            false
+        }
+    }
 }
+

@@ -8,6 +8,14 @@ import java.net.CookieManager
 import java.net.CookiePolicy
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * 서버가 HTTP 401을 반환했음을 나타낸다.
+ * 로그인되지 않은 상태와 네트워크 연결 실패를 구분할 때 사용한다.
+ */
+class UnauthorizedException(message: String) : IOException(message)
 
 // 모든 API가 같은 서버 주소와 로그인 세션을 사용하도록 HTTP 통신을 담당한다.
 object ApiClient {
@@ -17,6 +25,29 @@ object ApiClient {
 
     // 로그인 시 발급된 세션 쿠키를 보관하고 이후 요청에 재사용한다.
     private val cookies = CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER)
+
+    // 보호된 API에서 인증 실패가 발생했는지 보관한다.
+    // MainActivity가 이 값을 관찰해 로그인 화면으로 전환한다.
+    private val _sessionExpired = MutableStateFlow(false)
+
+    // 외부에서는 값을 읽기만 할 수 있도록 공개한다.
+    val sessionExpired = _sessionExpired.asStateFlow()
+
+    /**
+     * 화면에서 세션 만료 처리를 끝냈거나 새 로그인에 성공하면
+     * 이전 세션 만료 알림을 초기화한다.
+     */
+    fun clearSessionExpired() {
+        _sessionExpired.value = false
+    }
+
+    /**
+     * 앱 메모리에 보관한 세션 쿠키를 제거한다.
+     * 서버 로그아웃에 성공한 뒤 호출해 다음 요청에 이전 쿠키가 전달되지 않게 한다.
+     */
+    fun clearSessionCookies() {
+        cookies.cookieStore.removeAll()
+    }
 
     /**
      * 서버에 요청을 보내고 성공 응답을 JSON으로 반환한다.
@@ -68,8 +99,16 @@ object ApiClient {
             val status = connection.responseCode
             cookies.put(uri, connection.headerFields)
 
+            // 서버가 인증되지 않은 요청이라고 응답했을 때 처리한다.
             if (status == HttpURLConnection.HTTP_UNAUTHORIZED) {
-                throw IOException(unauthorizedMessage)
+                // 인증 API는 각 화면에서 결과를 처리한다.
+                // 로그인 비밀번호 오류나 최초 로그인 확인을 세션 만료 알림에 포함하지 않는다.
+                if (!path.startsWith("/api/auth/")) {
+                    _sessionExpired.value = true
+                }
+
+                // 현재 요청도 실패로 종료해 이후 성공 처리가 실행되지 않게 한다.
+                throw UnauthorizedException(unauthorizedMessage)
             }
             if (status !in 200..299) {
                 throw IOException("서버 요청에 실패했습니다. (HTTP $status)")
