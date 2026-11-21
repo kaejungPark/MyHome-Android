@@ -45,6 +45,7 @@ fun DashboardScreen(
     onLoginSuccess: () -> Unit,
     onLogoutSuccess: () -> Unit,
     onOpenShopping: (Boolean) -> Unit,
+    onOpenExpense: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // 화면에 연결된 코루틴으로 로그아웃 요청을 실행한다.
@@ -189,7 +190,8 @@ fun DashboardScreen(
 
             if (isLoggedIn) {
                 DashboardSummary(
-                    onOpenShopping = onOpenShopping
+                    onOpenShopping = onOpenShopping,
+                    onOpenExpense = onOpenExpense
                 )
             } else {
                 // 흰색 카드 안에 기존 로그인 폼을 표시한다.
@@ -221,19 +223,18 @@ fun DashboardScreen(
         // 로그인 후에는 화면 아래에 주요 메뉴를 표시한다.
         if (isLoggedIn) {
             DashboardBottomMenu(
-                onOpenShopping = { onOpenShopping(false) }
+                onOpenShopping = { onOpenShopping(false) },
+                onOpenExpense = onOpenExpense
             )
         }
     }
 }
 
-/**
- * 로그인한 사용자의 대시보드 요약 영역이다.
- * 장보기에서 돌아오면 다시 생성되어 최신 건수를 조회한다.
- */
+// 장보기와 생활비 요약에서 각각 해당 화면으로 이동한다.
 @Composable
 private fun DashboardSummary(
-    onOpenShopping: (Boolean) -> Unit
+    onOpenShopping: (Boolean) -> Unit,
+    onOpenExpense: () -> Unit
 ) {
     // null은 아직 조회하지 않은 상태이며, 0은 실제 조회 결과다.
     var pendingCount by remember { mutableStateOf<Long?>(null) }
@@ -275,10 +276,9 @@ private fun DashboardSummary(
         }
     }
 
-    // 생활비 API 연결 전임을 명확히 표시한다.
-    DashboardPendingCard(
-        title = "이번 달 생활비",
-        description = "월별 지출 합계 · 연동 예정"
+    // 실제 이번 달 합계를 표시하고 생활비 화면으로 이동한다.
+    ExpenseSummaryCard(
+        onOpenExpense = onOpenExpense
     )
 
     Column(
@@ -440,7 +440,8 @@ private fun DashboardPendingCard(
  */
 @Composable
 private fun DashboardBottomMenu(
-    onOpenShopping: () -> Unit
+    onOpenShopping: () -> Unit,
+    onOpenExpense: () -> Unit
 ) {
     Surface(
         color = Color.White,
@@ -474,12 +475,15 @@ private fun DashboardBottomMenu(
             }
 
             // 아직 구현하지 않은 메뉴는 비활성 상태로 표시한다.
+            // 생활비 화면을 열 수 있도록 메뉴를 활성화한다.
             TextButton(
-                onClick = {},
-                enabled = false,
+                onClick = onOpenExpense,
                 modifier = Modifier.weight(1f)
             ) {
-                Text("생활비")
+                Text(
+                    text = "생활비",
+                    color = DashboardNavy
+                )
             }
 
             // 장보기 메뉴는 살 물품 탭으로 이동한다.
@@ -516,7 +520,8 @@ fun DashboardPreview() {
             isLoggedIn = false,
             onLoginSuccess = {},
             onLogoutSuccess = {},
-            onOpenShopping = {}
+            onOpenShopping = {},
+            onOpenExpense = {}
         )
     }
 }

@@ -92,9 +92,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyHomeTheme {
-                // 대시보드와 장보기 중 어떤 화면을 표시할지 기억한다.
-                var showShopping by rememberSaveable {
-                    mutableStateOf(false)
+                // home은 대시보드, shopping은 장보기, expense는 생활비 화면이다.
+                var currentScreen by rememberSaveable {
+                    mutableStateOf("home")
                 }
 
                 // 장보기 진입 시 선택할 탭을 기억한다.
@@ -122,7 +122,7 @@ class MainActivity : ComponentActivity() {
 
                             // 로그인한 사용자에게 발생한 인증 실패만 화면 전환으로 처리한다.
                             if (session.isLoggedIn) {
-                                showShopping = false
+                                currentScreen = "home"
                                 shoppingInitialCompleted = false
                                 session.markLoggedOut()
 
@@ -139,21 +139,28 @@ class MainActivity : ComponentActivity() {
 
                     // 비로그인 상태가 확인되면 이전 장보기 이동 상태를 초기화한다.
                     if (session.checkError == null && !session.isLoggedIn) {
-                        showShopping = false
+                        currentScreen = "home"
                         shoppingInitialCompleted = false
                     }
                 }
 
-                // 서버 확인을 마쳤고 일반 로그인한 경우에만 장보기를 표시한다.
+                // 서버 확인을 마친 로그인 상태에서 장보기 화면을 표시한다.
                 val shoppingVisible =
                     !session.checking &&
                             session.checkError == null &&
                             session.isLoggedIn &&
-                            showShopping
+                            currentScreen == "shopping"
 
-                // 장보기에서 휴대폰 뒤로 가기를 누르면 대시보드로 이동한다.
-                BackHandler(enabled = shoppingVisible) {
-                    showShopping = false
+                // 생활비도 같은 인증 조건으로 표시한다.
+                val expenseVisible =
+                    !session.checking &&
+                            session.checkError == null &&
+                            session.isLoggedIn &&
+                            currentScreen == "expense"
+
+                // 장보기 또는 생활비에서 뒤로 가기를 누르면 대시보드로 돌아간다.
+                BackHandler(enabled = shoppingVisible || expenseVisible) {
+                    currentScreen = "home"
                 }
 
                 Scaffold(
@@ -205,10 +212,18 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        expenseVisible -> {
+                            // 생활비 화면을 열고 홈으로 돌아가는 동작을 전달한다.
+                            ExpenseRoute(
+                                onBack = { currentScreen = "home" },
+                                modifier = screenModifier
+                            )
+                        }
+
                         shoppingVisible -> {
                             // 대시보드에서 선택한 상태의 장보기 탭을 연다.
                             ShoppingRoute(
-                                onBack = { showShopping = false },
+                                onBack = { currentScreen = "home" },
                                 modifier = screenModifier,
                                 initialShowCompleted = shoppingInitialCompleted
                             )
@@ -224,18 +239,23 @@ class MainActivity : ComponentActivity() {
                                     sessionExpiredNotice = false
 
                                     // 대시보드의 로그인 상태를 갱신한다.
-                                    showShopping = false
+                                    currentScreen = "home"
                                     session.markLoggedIn()
                                 },
                                 onLogoutSuccess = {
                                     // 로그아웃 후 이전 화면과 탭 선택을 초기화한다.
-                                    showShopping = false
+                                    currentScreen = "home"
                                     shoppingInitialCompleted = false
                                     session.markLoggedOut()
                                 },
                                 onOpenShopping = { completed ->
+                                    // 선택한 장보기 탭을 지정하고 화면을 전환한다.
                                     shoppingInitialCompleted = completed
-                                    showShopping = true
+                                    currentScreen = "shopping"
+                                },
+                                onOpenExpense = {
+                                    // 생활비 메뉴 또는 합계 카드를 누르면 월별 지출 화면을 연다.
+                                    currentScreen = "expense"
                                 },
                                 modifier = screenModifier
                             )
