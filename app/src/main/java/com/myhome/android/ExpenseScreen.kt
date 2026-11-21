@@ -19,6 +19,7 @@ import java.math.BigDecimal
 import java.text.NumberFormat
 import java.util.Calendar
 import java.util.Locale
+import android.os.Bundle
 
 // 생활비 화면에 사용할 색상과 페이지당 표시 개수다.
 private val ExpenseNavy = Color(0xFF172B55)
@@ -87,11 +88,42 @@ fun ExpenseRoute(
     var month by rememberSaveable {
         mutableStateOf(currentExpenseMonth())
     }
+
     var page by rememberSaveable {
         mutableStateOf(1)
     }
+
     var reloadCount by remember {
         mutableStateOf(0)
+    }
+
+    // null이면 목록, 빈 Bundle이면 추가, ID가 있으면 수정 화면을 연다.
+    // Bundle은 화면 회전 후에도 복원할 수 있다.
+    var formArgs by rememberSaveable {
+        mutableStateOf<Bundle?>(null)
+    }
+
+    val initial = formArgs
+
+    if (initial != null) {
+        ExpenseForm(
+            initial = initial,
+            onBack = {
+                // 저장하지 않고 취소하면 기존 월과 페이지로 돌아간다.
+                formArgs = null
+            },
+            onSaved = { savedDate ->
+                // 수정으로 날짜가 다른 월로 이동해도 저장한 항목을 확인할 수 있게 한다.
+                month = savedDate.take(7)
+                page = 1
+                reloadCount++
+                formArgs = null
+            },
+            modifier = modifier
+        )
+
+        // 입력 화면이 열린 동안 아래 목록 화면은 구성하지 않는다.
+        return
     }
 
     // 월 또는 재조회 횟수가 바뀌면 로딩 상태부터 새로 시작한다.
@@ -136,6 +168,18 @@ fun ExpenseRoute(
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
+
+                // 남은 가로 공간을 채워 추가 버튼을 오른쪽에 배치한다.
+                Spacer(modifier = Modifier.weight(1f))
+
+                Button(
+                    onClick = {
+                        // 빈 입력값으로 지출 추가 화면을 연다.
+                        formArgs = Bundle()
+                    }
+                ) {
+                    Text("+ 지출 추가")
+                }
             }
 
             // 이전 달과 다음 달을 선택한다.
@@ -243,7 +287,25 @@ fun ExpenseRoute(
                                     items = visibleItems,
                                     key = { it.id }
                                 ) { item ->
-                                    ExpenseRow(item)
+                                    ExpenseRow(
+                                        item = item,
+                                        onClick = {
+                                            // 서버에서 받은 값을 수정 화면으로 복사한다.
+                                            formArgs = Bundle().apply {
+                                                putLong("id", item.id)
+                                                putString("title", item.title)
+                                                putLong("categoryId", item.categoryId)
+                                                putString(
+                                                    "amount",
+                                                    item.amount.stripTrailingZeros().toPlainString()
+                                                )
+                                                putString("expenseDate", item.expenseDate)
+                                                putString("expenseType", item.expenseType)
+                                                putString("paymentMethod", item.paymentMethod)
+                                                putString("memo", item.memo)
+                                            }
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -278,16 +340,22 @@ fun ExpenseRoute(
 }
 
 /**
- * 지출 제목, 날짜, 분류, 금액과 메모를 표시한다.
+ * 지출 정보를 카드에 표시하고 누르면 수정 화면을 연다.
  */
 @Composable
-private fun ExpenseRow(item: ExpenseItem) {
+private fun ExpenseRow(
+    item: ExpenseItem,
+    onClick: () -> Unit
+) {
+    // 카드 전체를 누르면 전달받은 수정 화면 열기 함수를 실행한다.
     Surface(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         color = Color.White,
         contentColor = ExpenseNavy
     ) {
+        // 카드 안에 제목, 날짜·분류, 금액, 메모를 세로로 배치한다.
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -307,7 +375,7 @@ private fun ExpenseRow(item: ExpenseItem) {
                 fontWeight = FontWeight.Bold
             )
 
-            // 메모가 있는 항목만 추가 설명을 표시한다.
+            // 내용이 있는 메모만 표시한다.
             item.memo?.takeIf { it.isNotBlank() }?.let { memo ->
                 Text(
                     text = memo,

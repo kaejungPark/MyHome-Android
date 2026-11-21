@@ -2,18 +2,21 @@ package com.myhome.android
 
 import android.net.Uri
 import java.math.BigDecimal
+import org.json.JSONObject
 
 /**
- * 생활비 목록에 표시할 지출 한 건이다.
- * 금액은 소수 계산 오차를 피하기 위해 BigDecimal로 보관한다.
- * 지출일은 서버가 반환한 yyyy-MM-dd 문자열을 사용한다.
+ * 생활비 목록과 수정 화면에서 사용할 지출 정보다.
+ * 분류 ID, 지출 유형, 결제 수단도 함께 보관해 수정 화면에 복원한다.
  */
 data class ExpenseItem(
     val id: Long,
     val title: String,
+    val categoryId: Long,
     val categoryName: String,
     val amount: BigDecimal,
     val expenseDate: String,
+    val expenseType: String,
+    val paymentMethod: String?,
     val memo: String?
 )
 
@@ -68,10 +71,16 @@ object ExpenseApi {
             ExpenseItem(
                 id = row.getLong("id"),
                 title = row.getString("title"),
+                categoryId = row.getLong("categoryId"),
                 categoryName = row.getString("categoryName"),
                 amount = row.get("amount").toString().toBigDecimal(),
                 expenseDate = row.getString("expenseDate"),
-                // JSON null을 문자 "null"로 표시하지 않도록 변환한다.
+                expenseType = row.getString("expenseType"),
+                paymentMethod = if (row.isNull("paymentMethod")) {
+                    null
+                } else {
+                    row.getString("paymentMethod")
+                },
                 memo = if (row.isNull("memo")) {
                     null
                 } else {
@@ -88,6 +97,47 @@ object ExpenseApi {
         return MonthlyExpenses(
             items = items,
             totalAmount = totalAmount
+        )
+    }
+
+    /**
+     * ID가 없으면 지출을 등록하고, ID가 있으면 해당 지출을 수정한다.
+     * 서버에서 로그인 사용자와 수정 가능 여부를 다시 검사한다.
+     */
+    suspend fun saveExpense(
+        id: Long?,
+        categoryId: Long,
+        amount: BigDecimal,
+        expenseDate: String,
+        expenseType: String,
+        paymentMethod: String,
+        title: String,
+        memo: String
+    ) {
+        // 선택 입력의 빈 문자열은 JSON null로 전달한다.
+        val body = JSONObject().apply {
+            put("categoryId", categoryId)
+            put("amount", amount)
+            put("expenseDate", expenseDate)
+            put("expenseType", expenseType)
+            put("title", title.trim())
+            put(
+                "paymentMethod",
+                paymentMethod.trim().ifBlank { null } ?: JSONObject.NULL
+            )
+            put(
+                "memo",
+                memo.trim().ifBlank { null } ?: JSONObject.NULL
+            )
+        }
+
+        // 등록과 수정 모두 서버 데이터를 변경하므로 CSRF 토큰이 필요하다.
+        ApiClient.request(
+            method = if (id == null) "POST" else "PUT",
+            path = if (id == null) "/api/expenses" else "/api/expenses/$id",
+            body = body.toString(),
+            contentType = "application/json; charset=UTF-8",
+            csrf = AuthApi.fetchCsrfToken()
         )
     }
 }

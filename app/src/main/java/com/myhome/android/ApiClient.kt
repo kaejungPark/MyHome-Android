@@ -17,6 +17,12 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class UnauthorizedException(message: String) : IOException(message)
 
+/**
+ * 서버가 반환한 HTTP 오류 코드를 보관한다.
+ * 화면에서 409 수정 제한 등을 구분해 안내할 때 사용한다.
+ */
+class ApiHttpException( val statusCode: Int, message: String ) : IOException(message)
+
 // 모든 API가 같은 서버 주소와 로그인 세션을 사용하도록 HTTP 통신을 담당한다.
 object ApiClient {
 
@@ -110,8 +116,12 @@ object ApiClient {
                 // 현재 요청도 실패로 종료해 이후 성공 처리가 실행되지 않게 한다.
                 throw UnauthorizedException(unauthorizedMessage)
             }
+            // 인증 실패는 위의 401 처리에서 다루고, 나머지 HTTP 오류를 전달한다.
             if (status !in 200..299) {
-                throw IOException("서버 요청에 실패했습니다. (HTTP $status)")
+                throw ApiHttpException(
+                    statusCode = status,
+                    message = "서버 요청에 실패했습니다. (HTTP $status)"
+                )
             }
 
             // 등록 성공(201)과 조회·수정 성공(200)을 모두 처리한다.
