@@ -140,4 +140,21 @@ object ExpenseApi {
             csrf = AuthApi.fetchCsrfToken()
         )
     }
+
+    /**
+     * 로그인한 사용자의 지출을 삭제한다.
+     * 서버가 소유자와 고정 지출 납부 연결 여부를 검사한다.
+     * 삭제는 서버 데이터를 변경하므로 CSRF 토큰을 함께 전달한다.
+     */
+    suspend fun deleteExpense(id: Long) {
+        require(id > 0) {
+            "삭제할 지출 ID가 올바르지 않습니다."
+        }
+
+        ApiClient.request(
+            method = "DELETE",
+            path = "/api/expenses/$id",
+            csrf = AuthApi.fetchCsrfToken()
+        )
+    }
 }

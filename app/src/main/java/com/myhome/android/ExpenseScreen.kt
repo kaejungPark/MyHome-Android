@@ -109,13 +109,19 @@ fun ExpenseRoute(
         ExpenseForm(
             initial = initial,
             onBack = {
-                // 저장하지 않고 취소하면 기존 월과 페이지로 돌아간다.
+                // 취소하면 기존 월과 페이지로 돌아간다.
                 formArgs = null
             },
             onSaved = { savedDate ->
-                // 수정으로 날짜가 다른 월로 이동해도 저장한 항목을 확인할 수 있게 한다.
+                // 저장한 지출일의 월로 이동하고 첫 페이지부터 조회한다.
                 month = savedDate.take(7)
                 page = 1
+                reloadCount++
+                formArgs = null
+            },
+            onDeleted = {
+                // 삭제 전 보고 있던 월과 페이지를 유지하고 목록·합계를 다시 조회한다.
+                // 마지막 페이지가 없어지면 기존 currentPage 계산이 남은 마지막 페이지를 표시한다.
                 reloadCount++
                 formArgs = null
             },

@@ -18,17 +18,19 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Locale
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 /**
- * 지출 추가·수정 입력 화면이다.
- * initial에 ID가 있으면 수정, 없으면 등록으로 처리한다.
- * 저장 성공 시 저장한 지출일을 전달해 해당 월 목록을 다시 조회한다.
+ * 지출 추가·수정·삭제 화면이다.
+ * 저장 성공 시 지출일을 전달하고, 삭제 성공 시 목록 재조회를 요청한다.
  */
 @Composable
 fun ExpenseForm(
     initial: Bundle,
     onBack: () -> Unit,
     onSaved: (String) -> Unit,
+    onDeleted: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // 날짜 선택 창을 띄울 때 사용할 현재 화면의 Context를 가져온다.
@@ -91,8 +93,13 @@ fun ExpenseForm(
     var categoryError by remember { mutableStateOf<String?>(null) }
     var categoryReload by remember { mutableStateOf(0) }
     var categoryExpanded by remember { mutableStateOf(false) }
+    // 저장·삭제 요청 중에는 입력과 버튼, 뒤로 가기를 잠근다.
     var saving by remember { mutableStateOf(false) }
+    // 입력 검증과 저장 실패 메시지다.
     var formError by remember { mutableStateOf<String?>(null) }
+    // 삭제 확인창 표시 여부와 삭제 실패 메시지를 관리한다.
+    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
 
     // 최초 진입과 재시도 시 분류 목록을 조회한다.
     LaunchedEffect(categoryReload) {
@@ -129,14 +136,6 @@ fun ExpenseForm(
             text = if (id == null) "지출 추가" else "지출 수정",
             style = MaterialTheme.typography.headlineMedium
         )
-
-        // 수정 가능 여부는 서버가 실제 고정 지출 납부 연결을 기준으로 판단한다.
-        if (id != null) {
-            Text(
-                text = "고정 지출 납부로 생성된 항목은 여기서 수정할 수 없습니다.",
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
 
         OutlinedTextField(
             value = title,
@@ -369,7 +368,7 @@ fun ExpenseForm(
                     }
                 }
             ) {
-                Text(if (saving) "저장 중…" else "저장")
+                Text(if (saving) "처리 중…" else "저장")
             }
 
             TextButton(
@@ -378,6 +377,125 @@ fun ExpenseForm(
             ) {
                 Text("취소")
             }
+
+            // 취소 버튼 바로 오른쪽에 작은 삭제 버튼을 배치한다.
+            if (id != null) {
+                TextButton(
+                    enabled = !saving,
+                    onClick = {
+                        deleteError = null
+                        showDeleteDialog = true
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("삭제")
+                }
+            }
         }
+    }
+
+    // 기존 지출의 삭제 버튼을 눌렀을 때 확인창을 표시한다.
+    if (showDeleteDialog && id != null) {
+        AlertDialog(
+            onDismissRequest = {
+                // 요청 중에는 창 밖 터치나 뒤로 가기로 닫지 않는다.
+                if (!saving) {
+                    showDeleteDialog = false
+                }
+            },
+            title = {
+                Text("지출을 삭제할까요?")
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 아직 저장하지 않은 수정 제목 대신 원래 항목명을 표시한다.
+                    Text(
+                        text = initial.getString("title").orEmpty()
+                    )
+
+                    Text("삭제한 지출은 복구할 수 없습니다.")
+
+                    // 서버가 삭제를 거절하거나 연결이 실패하면 창 안에 안내한다.
+                    deleteError?.let { message ->
+                        Text(
+                            text = message,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !saving,
+                    onClick = {
+                        // 빠르게 여러 번 눌러도 요청을 중복 실행하지 않는다.
+                        if (!saving) {
+                            saving = true
+                            deleteError = null
+
+                            scope.launch {
+                                try {
+                                    ExpenseApi.deleteExpense(id)
+
+                                    // 서버 삭제 성공 후 확인창을 닫고 목록을 갱신한다.
+                                    showDeleteDialog = false
+                                    onDeleted()
+                                } catch (e: CancellationException) {
+                                    // 화면 종료로 취소된 작업은 취소 상태를 유지한다.
+                                    throw e
+                                } catch (e: ApiHttpException) {
+                                    when (e.statusCode) {
+                                        404 -> {
+                                            // 다른 화면에서 이미 삭제한 경우에도 목록을 갱신한다.
+                                            showDeleteDialog = false
+                                            onDeleted()
+                                        }
+
+                                        409 -> {
+                                            // 고정 지출 납부에 연결된 항목은 서버에서 삭제를 제한한다.
+                                            deleteError =
+                                                "고정 지출 납부로 생성된 항목입니다. " +
+                                                        "고정 지출 화면에서 납부를 취소해 주세요."
+                                        }
+
+                                        else -> {
+                                            deleteError = e.message
+                                                ?: "삭제하지 못했습니다."
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    // 연결 실패 시 확인창을 유지해 다시 시도할 수 있게 한다.
+                                    deleteError =
+                                        "삭제 결과를 확인하지 못했습니다. " +
+                                                "연결 상태를 확인한 뒤 다시 시도해 주세요."
+                                } finally {
+                                    saving = false
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(if (saving) "삭제 중…" else "삭제")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !saving,
+                    onClick = {
+                        // 삭제 요청 없이 확인창만 닫는다.
+                        showDeleteDialog = false
+                    }
+                ) {
+                    Text("취소")
+                }
+            }
+        )
     }
 }
