@@ -20,6 +20,10 @@ import java.text.NumberFormat
 import java.util.Calendar
 import java.util.Locale
 import android.os.Bundle
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 
 // 생활비 화면에 사용할 색상과 페이지당 표시 개수다.
 private val ExpenseNavy = Color(0xFF172B55)
@@ -97,6 +101,18 @@ fun ExpenseRoute(
         mutableStateOf(0)
     }
 
+    // 조회 버튼으로 확정한 검색 조건이다.
+    // 화면 회전이나 수정 화면을 다녀온 뒤에도 유지한다.
+    var searchTitle by rememberSaveable {
+        mutableStateOf("")
+    }
+    var searchCategoryId by rememberSaveable {
+        mutableStateOf<Long?>(null)
+    }
+    var searchType by rememberSaveable {
+        mutableStateOf("")
+    }
+
     // null이면 목록, 빈 Bundle이면 추가, ID가 있으면 수정 화면을 연다.
     // Bundle은 화면 회전 후에도 복원할 수 있다.
     var formArgs by rememberSaveable {
@@ -113,7 +129,15 @@ fun ExpenseRoute(
                 formArgs = null
             },
             onSaved = { savedDate ->
-                // 저장한 지출일의 월로 이동하고 첫 페이지부터 조회한다.
+                // 새 지출은 이전 검색 조건에 가려지지 않도록 조건을 초기화한다.
+                // 기존 지출 수정 시에는 사용자가 적용한 검색 조건을 유지한다.
+                if (!initial.containsKey("id")) {
+                    searchTitle = ""
+                    searchCategoryId = null
+                    searchType = ""
+                }
+
+                // 저장한 지출의 월에서 첫 페이지를 다시 조회한다.
                 month = savedDate.take(7)
                 page = 1
                 reloadCount++
@@ -160,8 +184,9 @@ fun ExpenseRoute(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 상단에서 대시보드로 돌아갈 수 있다.
+            // 장보기처럼 뒤로 가기, 제목, 검색 버튼을 한 줄에 배치한다.
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onBack) {
@@ -170,22 +195,27 @@ fun ExpenseRoute(
 
                 Text(
                     text = "생활비",
+                    modifier = Modifier.weight(1f),
                     color = ExpenseNavy,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
 
-                // 남은 가로 공간을 채워 추가 버튼을 오른쪽에 배치한다.
-                Spacer(modifier = Modifier.weight(1f))
+                ExpenseSearchButton(
+                    appliedTitle = searchTitle,
+                    appliedCategoryId = searchCategoryId,
+                    appliedType = searchType,
+                    onSearch = { title, categoryId, type ->
+                        // 확정한 조건을 적용하고 첫 페이지부터 표시한다.
+                        searchTitle = title.trim()
+                        searchCategoryId = categoryId
+                        searchType = type
+                        page = 1
 
-                Button(
-                    onClick = {
-                        // 빈 입력값으로 지출 추가 화면을 연다.
-                        formArgs = Bundle()
+                        // 웹에서 변경한 지출도 반영할 수 있도록 서버 데이터를 새로 조회한다.
+                        reloadCount++
                     }
-                ) {
-                    Text("+ 지출 추가")
-                }
+                )
             }
 
             // 이전 달과 다음 달을 선택한다.
@@ -220,7 +250,37 @@ fun ExpenseRoute(
                 }
             }
 
+            // 장보기와 동일하게 추가 버튼을 목록 위 오른쪽에 배치한다.
+            Button(
+                onClick = { formArgs = Bundle() },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("+ 지출 추가")
+            }
+
+            // 서버 조회 결과를 현재 화면에서 사용할 값으로 가져온다.
             val data = result
+
+            // 제목은 대소문자를 구분하지 않는 부분 일치로 검색한다.
+            // 분류와 유형 조건이 비어 있으면 해당 조건으로 제한하지 않는다.
+            val filteredItems = remember(
+                data,
+                searchTitle,
+                searchCategoryId,
+                searchType
+            ) {
+                data?.items.orEmpty().filter { item ->
+                    item.title.contains(searchTitle, ignoreCase = true) &&
+                            (searchCategoryId == null || item.categoryId == searchCategoryId) &&
+                            (searchType.isEmpty() || item.expenseType == searchType)
+                }
+            }
+
+            // 필터 적용 여부에 따라 빈 목록 안내를 구분한다.
+            val hasFilter =
+                searchTitle.isNotEmpty() ||
+                        searchCategoryId != null ||
+                        searchType.isNotEmpty()
 
             when {
                 error != null -> {
@@ -269,15 +329,29 @@ fun ExpenseRoute(
                         }
                     }
 
-                    if (data.items.isEmpty()) {
-                        Text("선택한 월에 등록된 지출이 없습니다.")
+                    // 합계 카드의 건수는 월 전체 건수이고, 이 문구는 검색 결과 건수다.
+                    if (hasFilter) {
+                        Text(
+                            text = "검색 결과 ${filteredItems.size}건",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+
+                    if (filteredItems.isEmpty()) {
+                        Text(
+                            text = if (hasFilter) {
+                                "검색 조건에 맞는 지출이 없습니다."
+                            } else {
+                                "선택한 월에 등록된 지출이 없습니다."
+                            }
+                        )
                     } else {
-                        // 서버에서 받은 월별 전체 목록을 5개씩 나눠 표시한다.
+                        // 검색 결과를 기준으로 페이지 수와 현재 표시할 항목을 계산한다.
                         val totalPages =
-                            (data.items.size - 1) / EXPENSE_PAGE_SIZE + 1
+                            (filteredItems.size - 1) / EXPENSE_PAGE_SIZE + 1
 
                         val currentPage = page.coerceIn(1, totalPages)
-                        val visibleItems = data.items
+                        val visibleItems = filteredItems
                             .drop((currentPage - 1) * EXPENSE_PAGE_SIZE)
                             .take(EXPENSE_PAGE_SIZE)
 
@@ -465,5 +539,231 @@ fun ExpenseSummaryCard(
 
             Text("지출 내역 보기 ›")
         }
+    }
+}
+
+/**
+ * 생활비 제목·분류·유형 검색창을 연다.
+ * 입력 중인 조건은 조회를 누를 때 목록에 적용한다.
+ * 취소하면 적용된 조건을 유지하고, 초기화하면 모든 검색 조건을 해제한다.
+ */
+@Composable
+private fun ExpenseSearchButton(
+    appliedTitle: String,
+    appliedCategoryId: Long?,
+    appliedType: String,
+    onSearch: (String, Long?, String) -> Unit
+) {
+    // 검색창 표시 여부와 창 안에서 편집하는 값을 보관한다.
+    var open by rememberSaveable { mutableStateOf(false) }
+    var title by rememberSaveable { mutableStateOf("") }
+    var categoryId by rememberSaveable {
+        mutableStateOf<Long?>(null)
+    }
+    var type by rememberSaveable { mutableStateOf("") }
+
+    // 적용된 검색 조건이 있으면 돋보기 옆에 점을 표시한다.
+    val hasFilter =
+        appliedTitle.isNotEmpty() ||
+                appliedCategoryId != null ||
+                appliedType.isNotEmpty()
+
+    IconButton(
+        onClick = {
+            // 검색창을 열 때 현재 목록에 적용된 조건을 복원한다.
+            title = appliedTitle
+            categoryId = appliedCategoryId
+            type = appliedType
+            open = true
+        }
+    ) {
+        BadgedBox(
+            badge = {
+                if (hasFilter) {
+                    Badge()
+                }
+            }
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = if (hasFilter) {
+                    "검색 조건 적용 중, 생활비 검색 열기"
+                } else {
+                    "생활비 검색"
+                }
+            )
+        }
+    }
+
+    if (open) {
+        // 분류 조회 상태는 검색창을 열 때마다 새로 구성한다.
+        var categories by remember {
+            mutableStateOf<List<ExpenseCategory>>(emptyList())
+        }
+        var loading by remember { mutableStateOf(true) }
+        var loadError by remember { mutableStateOf<String?>(null) }
+        var reloadCount by remember { mutableStateOf(0) }
+        var categoryExpanded by remember { mutableStateOf(false) }
+
+        // 현재 서버에 등록된 분류를 불러온다.
+        LaunchedEffect(reloadCount) {
+            loading = true
+            loadError = null
+
+            try {
+                categories = CategoryApi.fetchCategories()
+            } catch (e: CancellationException) {
+                // 창이 닫혀 취소된 요청은 취소 상태를 유지한다.
+                throw e
+            } catch (e: Exception) {
+                loadError = "분류를 불러오지 못했습니다."
+            } finally {
+                loading = false
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = {
+                Text("생활비 검색")
+            },
+            text = {
+                // 작은 화면에서도 모든 검색 조건을 확인할 수 있게 한다.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("지출 제목") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // 분류 선택을 해제하면 모든 분류가 검색 대상이 된다.
+                    Box {
+                        OutlinedButton(
+                            enabled = !loading && loadError == null,
+                            onClick = { categoryExpanded = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val selectedName = categories
+                                .firstOrNull { it.id == categoryId }
+                                ?.name
+
+                            Text(
+                                text = when {
+                                    loading -> "분류를 불러오는 중…"
+                                    categoryId == null -> "전체 분류"
+                                    selectedName != null -> selectedName
+                                    else -> "기존 선택 분류"
+                                }
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = categoryExpanded,
+                            onDismissRequest = {
+                                categoryExpanded = false
+                            }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("전체 분류") },
+                                onClick = {
+                                    categoryId = null
+                                    categoryExpanded = false
+                                }
+                            )
+
+                            categories.forEach { category ->
+                                DropdownMenuItem(
+                                    text = { Text(category.name) },
+                                    onClick = {
+                                        categoryId = category.id
+                                        categoryExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    loadError?.let { message ->
+                        Text(
+                            text = message,
+                            color = MaterialTheme.colorScheme.error
+                        )
+
+                        TextButton(
+                            onClick = { reloadCount++ }
+                        ) {
+                            Text("분류 다시 불러오기")
+                        }
+                    }
+
+                    Text("지출 유형")
+
+                    // 서버에서 사용하는 FIXED·VARIABLE 값으로 조건을 보관한다.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = type.isEmpty(),
+                            onClick = { type = "" },
+                            label = { Text("전체") },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        FilterChip(
+                            selected = type == "FIXED",
+                            onClick = { type = "FIXED" },
+                            label = { Text("고정") },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        FilterChip(
+                            selected = type == "VARIABLE",
+                            onClick = { type = "VARIABLE" },
+                            label = { Text("변동") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    TextButton(
+                        onClick = {
+                            // 현재 선택한 월은 유지하고 검색 조건만 해제한다.
+                            open = false
+                            onSearch("", null, "")
+                        }
+                    ) {
+                        Text("검색 조건 초기화")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // 입력값을 확정한 뒤 검색창을 닫는다.
+                        open = false
+                        onSearch(title.trim(), categoryId, type)
+                    }
+                ) {
+                    Text("조회")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        // 편집 중인 검색 조건을 적용하지 않고 닫는다.
+                        open = false
+                    }
+                ) {
+                    Text("취소")
+                }
+            }
+        )
     }
 }
