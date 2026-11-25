@@ -24,7 +24,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginForm(
     onLoginSuccess: () -> Unit,
-    onOpenSignup: () -> Unit
+    onOpenSignup: () -> Unit,
+    onPasswordChangeRequired: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
@@ -36,6 +37,17 @@ fun LoginForm(
     var password by remember { mutableStateOf("") }
     var submitting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
+
+    // 비밀번호 찾기는 로그인 폼 대신 표시한다.
+    var showPasswordReset by remember { mutableStateOf(false) }
+
+    if (showPasswordReset) {
+        PasswordHelpScreen(
+            changeMode = false,
+            onBack = { showPasswordReset = false }
+        )
+        return
+    }
 
     /**
      * 버튼과 키보드가 같은 로그인 처리를 사용한다.
@@ -65,8 +77,9 @@ fun LoginForm(
                 password = ""
 
                 if (needsPasswordChange) {
-                    message =
-                        "임시 비밀번호로 로그인했습니다. 웹에서 비밀번호를 변경해 주세요."
+                    // 임시 로그인은 일반 로그인 완료로 처리하지 않는다.
+                    // 별도의 비밀번호 변경 화면으로 이동시킨다.
+                    onPasswordChangeRequired()
                 } else {
                     onLoginSuccess()
                 }
@@ -159,6 +172,18 @@ fun LoginForm(
 
         if (message.isNotEmpty()) {
             Text(message)
+        }
+
+        // 비밀번호를 잊어버린 사용자가 이메일 발송을 요청할 수 있게 한다.
+        TextButton(
+            enabled = !submitting,
+            onClick = {
+                message = ""
+                showPasswordReset = true
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("비밀번호 찾기")
         }
 
         TextButton(
