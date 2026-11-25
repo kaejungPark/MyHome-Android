@@ -116,11 +116,33 @@ object ApiClient {
                 // 현재 요청도 실패로 종료해 이후 성공 처리가 실행되지 않게 한다.
                 throw UnauthorizedException(unauthorizedMessage)
             }
-            // 인증 실패는 위의 401 처리에서 다루고, 나머지 HTTP 오류를 전달한다.
+
+            // 서버가 반환한 사용자 안내 메시지를 읽고 HTTP 상태 코드도 유지한다.
             if (status !in 200..299) {
+                val fallback = "서버 요청에 실패했습니다. (HTTP $status)"
+
+                // 오류 본문이 없거나 JSON 형식이 아니어도 기본 오류를 전달한다.
+                val serverMessage = runCatching {
+                    val bodyText = connection.errorStream
+                        ?.bufferedReader(Charsets.UTF_8)
+                        ?.use { it.readText() }
+
+                    if (bodyText.isNullOrBlank()) {
+                        null
+                    } else {
+                        val bodyJson = JSONObject(bodyText)
+
+                        if (bodyJson.isNull("message")) {
+                            null
+                        } else {
+                            bodyJson.getString("message").takeIf { it.isNotBlank() }
+                        }
+                    }
+                }.getOrNull()
+
                 throw ApiHttpException(
                     statusCode = status,
-                    message = "서버 요청에 실패했습니다. (HTTP $status)"
+                    message = serverMessage ?: fallback
                 )
             }
 

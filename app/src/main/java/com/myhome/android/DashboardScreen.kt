@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.saveable.rememberSaveable
 
 // 대시보드에서 사용할 배경색과 강조색이다.
 private val DashboardBackground = Color(0xFFF3F5FA)
@@ -48,6 +49,21 @@ fun DashboardScreen(
     onOpenExpense: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+
+    // 로그인 전 회원가입 화면을 열었는지 기억한다.
+    var showSignup by rememberSaveable {
+        mutableStateOf(false)
+    }
+
+    // 회원가입 화면을 열면 해당 화면을 표시한다.
+    if (showSignup && !isLoggedIn) {
+        SignupScreen(
+            onBack = { showSignup = false },
+            modifier = modifier
+        )
+        return
+    }
+
     // 화면에 연결된 코루틴으로 로그아웃 요청을 실행한다.
     val scope = rememberCoroutineScope()
 
@@ -211,9 +227,10 @@ fun DashboardScreen(
                             fontWeight = FontWeight.Bold
                         )
 
-                        // 로그인 성공을 MainActivity에 전달한다.
+                        // 로그인 성공은 상위 화면에 전달하고, 회원가입은 별도 화면으로 연다.
                         LoginForm(
-                            onLoginSuccess = onLoginSuccess
+                            onLoginSuccess = onLoginSuccess,
+                            onOpenSignup = { showSignup = true }
                         )
                     }
                 }
