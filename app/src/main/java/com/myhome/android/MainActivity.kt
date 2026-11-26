@@ -18,36 +18,47 @@ import com.myhome.android.ui.theme.MyHomeTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 
+
 /**
- * 로그인 상태와 서버 확인 결과를 보관한다.
- * 화면이 회전해 Activity가 다시 생성되어도 같은 ViewModel을 사용한다.
+ * 로그인 여부와 비밀번호 변경 필요 여부를 관리한다.
+ * 화면이 회전해도 같은 ViewModel을 사용한다.
  */
 class DashboardSessionViewModel : ViewModel() {
-    // 일반 로그인 여부이며 외부에서는 함수를 통해 변경한다.
+
+    // 일반 로그인 상태이며, 이때만 서비스 화면을 이용한다.
     var isLoggedIn by mutableStateOf(false)
         private set
 
-    // 서버 확인이 끝날 때까지 로그인 폼이나 서비스 화면 표시를 기다린다.
+    // 임시 비밀번호로 로그인하면 비밀번호 변경 화면을 표시한다.
+    var passwordChangeRequired by mutableStateOf(false)
+        private set
+
+    // 서버의 세션 확인이 끝나기 전까지 진행 화면을 표시한다.
     var checking by mutableStateOf(true)
         private set
 
-    // 연결 실패 또는 비밀번호 변경 필요 안내를 보관한다.
+    // 통신 실패 시 화면에 표시할 오류 메시지다.
     var checkError by mutableStateOf<String?>(null)
         private set
 
     /**
-     * 서버에 현재 세션의 로그인 상태를 확인한다.
-     * 통신 실패 시에는 오류를 표시하고 재시도할 수 있게 한다.
+     * 현재 세션이 일반 로그인인지 임시 로그인인지 확인한다.
+     * 임시 로그인은 연결 오류와 구분해서 처리한다.
      */
     suspend fun checkSession() {
         checking = true
         checkError = null
 
         try {
-            // 401 응답은 false로 반환되고, 연결 실패는 예외로 전달된다.
+            // 일반 로그인은 true, 비로그인은 false를 반환한다.
             isLoggedIn = AuthApi.checkLoginStatus()
+            passwordChangeRequired = false
+        } catch (e: PasswordChangeRequiredException) {
+            // 임시 로그인 세션은 일반 서비스 대신 변경 화면으로 연결한다.
+            isLoggedIn = false
+            passwordChangeRequired = true
         } catch (e: CancellationException) {
-            // Activity 종료나 재생성으로 취소된 요청은 취소 처리를 이어간다.
+            // 화면 재생성 등에 의한 취소는 그대로 전달한다.
             throw e
         } catch (e: Exception) {
             checkError = e.localizedMessage
@@ -58,19 +69,32 @@ class DashboardSessionViewModel : ViewModel() {
     }
 
     /**
-     * 로그인 API가 일반 로그인 성공을 반환한 뒤 호출한다.
+     * 일반 비밀번호로 로그인한 결과를 반영한다.
      */
     fun markLoggedIn() {
         isLoggedIn = true
+        passwordChangeRequired = false
         checkError = null
         checking = false
     }
 
     /**
-     * 로그아웃 API가 성공한 뒤 앱의 로그인 상태를 초기화한다.
+     * 임시 비밀번호 로그인 성공 후 변경 화면으로 이동한다.
+     * 일반 로그인 상태로 처리하지 않아 서비스 진입을 막는다.
+     */
+    fun markPasswordChangeRequired() {
+        isLoggedIn = false
+        passwordChangeRequired = true
+        checkError = null
+        checking = false
+    }
+
+    /**
+     * 로그아웃 또는 비밀번호 변경 완료 후 상태를 초기화한다.
      */
     fun markLoggedOut() {
         isLoggedIn = false
+        passwordChangeRequired = false
         checkError = null
         checking = false
     }
@@ -212,6 +236,26 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        session.passwordChangeRequired -> {
+                            // 임시 로그인 상태에서는 비밀번호 변경 화면을 먼저 표시한다.
+                            PasswordHelpScreen(
+                                changeMode = true,
+                                onBack = {
+                                    // 변경 완료 또는 취소 시 앱에 남은 임시 로그인 정보를 제거한다.
+                                    // 취소한 서버 세션은 서버의 만료 정책에 따라 정리된다.
+                                    ApiClient.clearSessionCookies()
+                                    ApiClient.clearSessionExpired()
+
+                                    // 이전 서비스 화면으로 돌아가지 않도록 홈 상태로 초기화한다.
+                                    currentScreen = "home"
+                                    shoppingInitialCompleted = false
+                                    sessionExpiredNotice = false
+                                    session.markLoggedOut()
+                                },
+                                modifier = screenModifier
+                            )
+                        }
+
                         expenseVisible -> {
                             // 생활비 화면을 열고 홈으로 돌아가는 동작을 전달한다.
                             ExpenseRoute(
@@ -233,6 +277,19 @@ class MainActivity : ComponentActivity() {
                             // 확인된 로그인 상태에 맞춰 대시보드를 표시한다.
                             DashboardScreen(
                                 isLoggedIn = session.isLoggedIn,
+
+                                onPasswordChangeRequired = {
+                                    // 이전 세션 만료 안내가 남아 있지 않도록 초기화한다.
+                                    ApiClient.clearSessionExpired()
+                                    sessionExpiredNotice = false
+
+                                    // 임시 로그인은 일반 서비스 화면으로 이동시키지 않는다.
+                                    currentScreen = "home"
+                                    shoppingInitialCompleted = false
+
+                                    // 비밀번호 변경 화면을 표시하도록 상태를 갱신한다.
+                                    session.markPasswordChangeRequired()
+                                },
                                 onLoginSuccess = {
                                     // 새 로그인 성공 후 이전 만료 안내와 알림을 초기화한다.
                                     ApiClient.clearSessionExpired()

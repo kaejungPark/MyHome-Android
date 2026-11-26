@@ -44,6 +44,7 @@ private val DashboardSecondary = Color(0xFF647087)
 fun DashboardScreen(
     isLoggedIn: Boolean,
     onLoginSuccess: () -> Unit,
+    onPasswordChangeRequired: () -> Unit,
     onLogoutSuccess: () -> Unit,
     onOpenShopping: (Boolean) -> Unit,
     onOpenExpense: () -> Unit,
@@ -227,10 +228,11 @@ fun DashboardScreen(
                             fontWeight = FontWeight.Bold
                         )
 
-                        // 로그인 성공은 상위 화면에 전달하고, 회원가입은 별도 화면으로 연다.
+                        // 일반 로그인과 임시 비밀번호 로그인의 결과를 각각 상위 화면에 전달한다.
                         LoginForm(
                             onLoginSuccess = onLoginSuccess,
-                            onOpenSignup = { showSignup = true }
+                            onOpenSignup = { showSignup = true },
+                            onPasswordChangeRequired = onPasswordChangeRequired
                         )
                     }
                 }
@@ -532,10 +534,11 @@ private fun DashboardBottomMenu(
 @Composable
 fun DashboardPreview() {
     MyHomeTheme {
-        // 미리보기에서는 실제 로그인·로그아웃 동작을 실행하지 않는다.
         DashboardScreen(
             isLoggedIn = false,
             onLoginSuccess = {},
+            // 미리보기에서는 실제 화면 전환을 실행하지 않는다.
+            onPasswordChangeRequired = {},
             onLogoutSuccess = {},
             onOpenShopping = {},
             onOpenExpense = {}
