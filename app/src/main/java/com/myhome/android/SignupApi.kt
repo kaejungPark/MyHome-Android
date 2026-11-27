@@ -25,6 +25,8 @@ object SignupApi {
             csrf = AuthApi.fetchCsrfToken()
         )
 
+        // 어떤 발송 요청의 인증번호인지 구분하는 ID다.
+        // 인증번호 확인 시 이메일·인증번호와 함께 전달하며, 가입 완료 증명으로는 사용하지 않는다.
         return response.getJSONObject("data").getString("requestId")
     }
 
@@ -51,6 +53,8 @@ object SignupApi {
             csrf = AuthApi.fetchCsrfToken()
         )
 
+        // 이메일 인증 성공을 증명하는 가입용 토큰이다.
+        // 로그인 세션이나 CSRF 토큰과는 다르며, 회원가입 요청의 emailVerificationToken에 넣는다.
         return response.getJSONObject("data").getString("verificationToken")
     }
 

@@ -29,7 +29,9 @@ object ApiClient {
     // 안드로이드 에뮬레이터에서 개발 PC의 Spring Boot 서버에 접속하는 주소다.
     private const val BASE_URL = "http://10.0.2.2:8080"
 
-    // 로그인 시 발급된 세션 쿠키를 보관하고 이후 요청에 재사용한다.
+    // 로그인 세션 쿠키를 메모리에 보관하고 같은 서버로 보내는 요청에 재사용한다.
+    // 파일에 저장하지 않으므로 앱 프로세스가 종료되면 쿠키도 사라진다.
+    // 화면 회전만으로는 앱 프로세스가 종료되지 않아 쿠키가 유지된다.
     private val cookies = CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER)
 
     // 보호된 API에서 인증 실패가 발생했는지 보관한다.
@@ -48,8 +50,9 @@ object ApiClient {
     }
 
     /**
-     * 앱 메모리에 보관한 세션 쿠키를 제거한다.
-     * 서버 로그아웃에 성공한 뒤 호출해 다음 요청에 이전 쿠키가 전달되지 않게 한다.
+     * 앱 메모리에 보관한 쿠키를 모두 제거한다.
+     * 이후 요청에서 이전 로그인 세션을 재사용하지 않도록 한다.
+     * 이 함수 자체는 서버에 로그아웃 요청을 보내거나 서버 세션을 종료하지 않는다.
      */
     fun clearSessionCookies() {
         cookies.cookieStore.removeAll()
@@ -80,7 +83,8 @@ object ApiClient {
             connection.readTimeout = 5_000
             connection.setRequestProperty("Accept", "application/json")
 
-            // CSRF 토큰을 전달받은 요청에만 서버가 지정한 인증 헤더를 붙인다.
+            // 서버가 발급한 CSRF 토큰을 지정된 헤더 이름으로 전달한다.
+            // 로그인 여부는 세션 쿠키로 확인하며, CSRF 토큰은 요청 위조 방지에 사용한다.
             if (csrf != null) {
                 connection.setRequestProperty(csrf.headerName, csrf.token)
             }

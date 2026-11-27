@@ -27,7 +27,9 @@ fun SignupScreen(
 ) {
     val scope = rememberCoroutineScope()
 
-    // 입력 정보와 인증 정보는 현재 화면의 메모리에 보관한다.
+    // 입력값과 인증값은 현재 화면의 메모리에만 보관한다.
+    // rememberSaveable을 사용하지 않으므로 화면 회전 등으로 재생성되면 초기화된다.
+    // 비밀번호와 인증 토큰을 화면 복원용 저장 상태에 남기지 않는다.
     var email by remember { mutableStateOf("") }
     var nickname by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
@@ -141,6 +143,8 @@ fun SignupScreen(
             style = MaterialTheme.typography.bodySmall
         )
 
+        // 발송 요청이 성공했고 아직 인증을 완료하지 않았을 때만 인증번호 입력창을 표시한다.
+        // 인증 완료 후에는 입력창 대신 인증 완료 문구와 가입 입력을 사용한다.
         if (requestId != null && verificationToken == null) {
             OutlinedTextField(
                 value = code,
@@ -354,6 +358,8 @@ fun SignupScreen(
                         "닉네임은 1~100자로 입력해 주세요."
                     password.isBlank() || password.length < 12 ->
                         "비밀번호는 12자 이상 입력해 주세요."
+                    // 서버의 BCrypt 입력 제한에 맞춰 글자 수와 별도로 UTF-8 바이트 수를 검사한다.
+                    // 한글 등은 한 글자가 여러 바이트이므로 length만으로 검사하지 않는다.
                     password.toByteArray(Charsets.UTF_8).size > 72 ->
                         "비밀번호는 UTF-8 기준 72바이트 이내로 입력해 주세요."
                     password != passwordConfirm ->
